@@ -15,6 +15,7 @@ Based on:
     (TODO: pick a citation style)
 """
 from typing import TypeVar, Generic, Optional, List, Tuple, Generator
+from collections import deque
 
 K = TypeVar('K')
 V = TypeVar('V')
@@ -23,6 +24,7 @@ NodeIterator = Generator['WBBTree[K, V]', None, None]
 KVIterator = Generator[KV, None, None]
 
 class WBBTree(Generic[K, V]):
+    """A weight-balanced B-tree."""
     def __init__(self, d: int = 8):
         """Creates a weight-balanced B-tree with balance factor `d`."""
         # Arge and Vitter distinguish between the branching parameter `a`
@@ -52,8 +54,19 @@ class WBBTree(Generic[K, V]):
 
     def _root_invariant(self) -> bool:
         """Invariant 2: the root has between 2 and 4d children."""
-        # TODO: make less restrictive?
-        return 2 <= len(self.root.children) <= 4 * self.d
+        return self.root.is_leaf or 2 <= len(self.root.children) <= 4 * self.d
+
+    def _weight_invariant(self) -> bool:
+        """Invariant: a node's weight == the number of keys it contains +
+        the weight of its children."""
+        return all(node.weight ==
+                   len(node.keys) + sum(c.weight for c in node.children)
+                   for node in self.root.all_nodes())
+
+    def _kv_invariant(self) -> bool:
+        """Invariant: number of node keys == number of node values."""
+        return all(len(node.keys) == len(node.vals)
+                   for node in self.root.all_nodes())
 
     def _balance_invariant(self) -> bool:
         """Invariant 3: balance.
@@ -64,17 +77,53 @@ class WBBTree(Generic[K, V]):
             subtree rooted at u. This weight is bounded by
             d^{h-1} / 2 ≤ w(u) ≤ 2d^{h-1}.
         """
-        raise NotImplementedError
+        leaf_depth, _ = next(self.root.leaves())
+        height = leaf_depth + 2   # We assume the depth invariant holds.
+        nodes = deque((height - 1, c) for c in self.root.children)
+        while nodes:
+            node_height, node = nodes.popleft()
+            if node.weight < self.d**(node_height - 1) / 2 or \
+               node.weight > 2 * self.d**(node_height - 1):
+                return False
+            for child in node.children:
+                nodes.append((node_height - 1, child))
+        return True
 
-    def _num_children_invariant(self) -> bool:
+    def _local_balance_invariant(self) -> bool:
         """Invariant 5: All internal non-root nodes have between d/4 and 4d
         children."""
         return all(self.d // 4 <= len(node.children) <= 4 * self.d
                    or node == self.root
                    for node in self.root.internal_nodes())
 
+    def _num_children_invariant(self) -> bool:
+        """Invariant: At each internal node, # of children == # of keys + 1."""
+        return all(len(node.children) == len(node.keys) + 1
+                   for node in self.root.internal_nodes())
+
+    def _key_order_invariant(self) -> bool:
+        """Invariant: At each node, keys are in order."""
+        return all(node.keys == sorted(node.keys)
+                   for node in self.root.all_nodes())
+
+    def check_invariants(self) -> None:
+        """Verifies that the tree is well-formed."""
+        assert self._depth_invariant(), 'Leaves have unequal depths.'
+        assert self._root_invariant(), 'Root has the wrong number of children.'
+        assert self._weight_invariant(), '≥1 node has the wrong weight.'
+        assert self._num_children_invariant(), \
+                'At ≥1 node, # of children ≠ # of keys + 1.'
+        assert self._kv_invariant(), \
+                'At ≥1 node, # of keys ≠ # of values.'
+        assert self._local_balance_invariant(), \
+               '≥1 internal node has < d/4 or > 4d children.'
+        assert self._balance_invariant(), 'Tree is unbalanced.'
+        assert self._key_order_invariant(), \
+               '≥1 node has keys in the wrong order.'
+
 
 class WBBNode(Generic[K, V]):
+    """A node in a weight-balanced B-tree."""
     def __init__(self, d: int = 8):
         """Creates a weight-balanced B-tree node with balance factor `d`."""
         self.weight = 0
@@ -107,14 +156,14 @@ class WBBNode(Generic[K, V]):
         """Finds a path to a (possibly nonexistent) key."""
         yield self
         if not self.is_leaf and key not in self.keys:
-            for child, child_key in zip(self.children[1:], self.keys):
-                if key > child_key:
+            for child, child_key in zip(self.children, self.keys):
+                if child_key > key:
                     yield from child.path(key)
                     return
             # We maintain the invariant len(children) == len(keys) + 1,
-            # so the loop doesn't see the left child.
+            # so the loop doesn't see the right child.
             assert len(self.children) == len(self.keys) + 1  # TODO: always true?
-            yield from self.children[0].path(key)
+            yield from self.children[-1].path(key)
 
     def _split(self) -> Tuple['WBBNode[K, V]', KV, 'WBBNode[K, V]']:
         """Finds a weight-balanced split of the subtree rooted at the node."""
@@ -173,17 +222,19 @@ class WBBNode(Generic[K, V]):
         for level, child in enumerate(reversed(path)):
             target_weight = self.d**(level + 1)
             if child.weight > 2 * target_weight:
-                left, median, right = self._split()
+                left, median, right = child._split()
                 if level + 1 == len(path):
                     # Splitting at the top requires a new root node.
                     new_root: WBBNode[K, V] = WBBNode(d=self.d)
                     new_root.insert(*median)
                     new_root.children = [left, right]
                     new_root.weight = left.weight + right.weight + 1
+                    print('new root node: ', new_root)
                     return new_root
                 # Otherwise, replace the child node with the new left node and
                 # insert the right node next to it.
-                parent = path[level + 1]
+                parent = path[len(path) - level - 2]
+                print('parent (before): ', parent)
                 for idx, node in enumerate(parent.children):
                     if node == child:
                         parent.children[idx] = left
@@ -191,6 +242,7 @@ class WBBNode(Generic[K, V]):
                         parent.vals.insert(idx + 1, median[1])
                         parent.children.insert(idx + 1, right)
                         break
+                print('parent (after): ', parent)
         return self
 
     def leaves(self) -> Generator[Tuple[int, 'WBBNode[K, V]'], None, None]:
@@ -208,11 +260,23 @@ class WBBNode(Generic[K, V]):
             for child in self.children:
                 yield from child.internal_nodes()
 
+    def all_nodes(self) -> NodeIterator:
+        """Finds all the nodes in the subtree rooted at the node."""
+        yield self
+        for child in self.children:
+            yield from child.all_nodes()
+
     def all(self) -> KVIterator:
         """Finds all the key-value pairs in the subtree rooted at the node."""
-        yield from zip(self.keys, self.vals)
-        for child in self.children:
-            yield from child.all()
+        if self.is_leaf:
+            yield from zip(self.keys, self.vals)
+        else:
+            # In-order traversal.
+            for child, key, val in zip(self.children, self.keys, self.vals):
+                yield from child.all()
+                yield (key, val)
+            if len(self.children) > len(self.keys):
+                yield from self.children[-1].all()
 
     def __repr__(self):
         if self.is_leaf:
