@@ -165,7 +165,7 @@ class WBBNode(Generic[K, V]):
             assert len(self.children) == len(self.keys) + 1  # TODO: always true?
             yield from self.children[-1].path(key)
 
-    def _split(self) -> Tuple['WBBNode[K, V]', KV, 'WBBNode[K, V]']:
+    def split(self) -> Tuple['WBBNode[K, V]', KV, 'WBBNode[K, V]']:
         """Finds a weight-balanced split of the subtree rooted at the node."""
         left: WBBNode[K, V] = WBBNode(d=self.d)
         idx = 0
@@ -180,7 +180,7 @@ class WBBNode(Generic[K, V]):
             data = zip(self.children, self.keys, self.vals)
             for idx, (node, k, v) in enumerate(data):
                 left.children.append(node)
-                left.weight += self.weight
+                left.weight += node.weight
                 if left.weight < self.weight / 2:
                     left.keys.append(k)
                     left.vals.append(v)
@@ -194,12 +194,10 @@ class WBBNode(Generic[K, V]):
         right.vals = self.vals[idx + 1:]
         right.weight = sum(c.weight for c in right.children)
         right.weight += len(right.keys)
-        print('splitting:', left, '\t', median, '\t', right)
         return left, median, right
 
     def insert(self, key: K, val: V) -> 'WBBNode[K, V]':
         path = list(self.path(key))
-        print('path: ', path)
         leaf = path[-1]
         if key in leaf.keys:
             raise ValueError(f'Key "{key}" already in tree')
@@ -222,19 +220,17 @@ class WBBNode(Generic[K, V]):
         for level, child in enumerate(reversed(path)):
             target_weight = self.d**(level + 1)
             if child.weight > 2 * target_weight:
-                left, median, right = child._split()
+                left, median, right = child.split()
                 if level + 1 == len(path):
                     # Splitting at the top requires a new root node.
                     new_root: WBBNode[K, V] = WBBNode(d=self.d)
-                    new_root.insert(*median)
+                    new_root.insert(median[0], median[1])
                     new_root.children = [left, right]
                     new_root.weight = left.weight + right.weight + 1
-                    print('new root node: ', new_root)
                     return new_root
                 # Otherwise, replace the child node with the new left node and
                 # insert the right node next to it.
                 parent = path[len(path) - level - 2]
-                print('parent (before): ', parent)
                 for idx, node in enumerate(parent.children):
                     if node == child:
                         parent.children[idx] = left
@@ -242,7 +238,6 @@ class WBBNode(Generic[K, V]):
                         parent.vals.insert(idx + 1, median[1])
                         parent.children.insert(idx + 1, right)
                         break
-                print('parent (after): ', parent)
         return self
 
     def leaves(self) -> Generator[Tuple[int, 'WBBNode[K, V]'], None, None]:
