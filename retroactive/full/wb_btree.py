@@ -1,7 +1,4 @@
-"""Insert/lookup-only strongly weight-balanced B-trees.
-
-We omit the complicated delete operation, as it is not necessary
-in our application (fully retroactive data structures).
+"""Strongly weight-balanced B-trees.
 
 Based on:
     [1] Lars Arge and Jeffrey Scott Vitter, Optimal external memory
@@ -28,11 +25,11 @@ class WBBTree(Generic[K, V]):
     def __init__(self, d: int = 8):
         """Creates a weight-balanced B-tree with balance factor `d`."""
         # Arge and Vitter distinguish between the branching parameter `a`
-        # and a leaf parameter `k`. Following Bender et al., we use `d`
-        # for both parameters (that is, nodes have at most 2d - 1 leaves).
+        # and a leaf parameter `k`. Following Bender et al., we use k = 1.
         if d < 4:
             raise ValueError('Balance factor must be ≥4.')
         self.d = d
+        self.deleted = 0
         self.root: WBBNode[K, V] = WBBNode(d=d)
 
     def find(self, key: K) -> Optional[V]:
@@ -41,12 +38,32 @@ class WBBTree(Generic[K, V]):
     def insert(self, key: K, val: V) -> None:
         """Inserts a key-value pair into the tree.
 
-        If `key` is already in the tree, a `DuplicateKeyError` is raised."""
+        If `key` is already in the tree, a `ValueError`` is raised."""
         self.root = self.root.insert(key, val)
+
+    def delete(self, key: K) -> None:
+        """Deletes a key-value pair in the tree.
+
+        If the `key` is not in the tree, a ``ValueError`` is raised."""
+        self.root.mark_deleted(key)
+        self.deleted += 1
+        if self.deleted > self.root.weight // 2:
+            # Globally rebalance.
+            # TODO: use a different order here?
+            new_root: WBBNode[K, V] = WBBNode(d=self.d)
+            for k, v in self.root.all():
+                new_root.insert(k, v)
+            self.root = new_root
+            self.deleted = 0
 
     def all(self) -> KVIterator:
         """Returns all key-value pairs in order."""
         return self.root.all()
+
+    @property
+    def size(self) -> int:
+        """The number of key-value pairs in the tree."""
+        return self.root.weight - self.deleted
 
     def _depth_invariant(self) -> bool:
         """Invariant 1: all leaves of the tree have the same depth."""
@@ -128,6 +145,7 @@ class WBBNode(Generic[K, V]):
         """Creates a weight-balanced B-tree node with balance factor `d`."""
         self.weight = 0
         self.d = d
+        self.deleted: List[K] = []
         self.keys: List[K] = []
         self.vals: List[V] = []
         self.children: List[WBBNode[K, V]] = []
@@ -148,6 +166,8 @@ class WBBNode(Generic[K, V]):
         for node in self.path(key):
             pass  # Find the last node on the path.
         try:
+            if key in node.deleted:
+                return None
             return node.vals[node.keys.index(key)]
         except ValueError:
             return None
@@ -162,7 +182,7 @@ class WBBNode(Generic[K, V]):
                     return
             # We maintain the invariant len(children) == len(keys) + 1,
             # so the loop doesn't see the right child.
-            assert len(self.children) == len(self.keys) + 1  # TODO: always true?
+            assert len(self.children) == len(self.keys) + 1
             yield from self.children[-1].path(key)
 
     def split(self) -> Tuple['WBBNode[K, V]', KV, 'WBBNode[K, V]']:
@@ -188,10 +208,12 @@ class WBBNode(Generic[K, V]):
                 else:
                     break
         median = (self.keys[idx], self.vals[idx])
+        left.deleted = [k for k in self.deleted if k < self.keys[idx]]
         right: WBBNode[K, V] = WBBNode(d=self.d)
         right.children = self.children[idx + 1:]
         right.keys = self.keys[idx + 1:]
         right.vals = self.vals[idx + 1:]
+        right.deleted = [k for k in self.deleted if k > self.keys[idx]]
         right.weight = sum(c.weight for c in right.children)
         right.weight += len(right.keys)
         return left, median, right
@@ -200,6 +222,11 @@ class WBBNode(Generic[K, V]):
         path = list(self.path(key))
         leaf = path[-1]
         if key in leaf.keys:
+            if key in leaf.deleted:
+                # Just unmark the key and replace its value!
+                leaf.deleted.remove(key)
+                leaf.vals[leaf.keys.index(key)] = val
+                return self
             raise ValueError(f'Key "{key}" already in tree')
 
         # Insert the new key-value pair in place.
@@ -240,6 +267,12 @@ class WBBNode(Generic[K, V]):
                         break
         return self
 
+    def mark_deleted(self, key: K) -> 'WBBNode[K, V]':
+        path = list(self.path(key))
+        if key not in path[-1].keys or key in path[-1].deleted:
+            raise ValueError(f'Cannot delete "{key}" (not in tree)')
+        path[-1].deleted.append(key)
+
     def leaves(self) -> Generator[Tuple[int, 'WBBNode[K, V]'], None, None]:
         """Finds all the leaves in the subtree rooted at the node."""
         if self.is_leaf:
@@ -269,7 +302,8 @@ class WBBNode(Generic[K, V]):
             # In-order traversal.
             for child, key, val in zip(self.children, self.keys, self.vals):
                 yield from child.all()
-                yield (key, val)
+                if key not in child.deleted:
+                    yield (key, val)
             if len(self.children) > len(self.keys):
                 yield from self.children[-1].all()
 
