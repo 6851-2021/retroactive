@@ -49,6 +49,7 @@ class WBBTree(Generic[K, V]):
         self.root.mark_deleted(key)
         self.deleted += 1
         if self.deleted > self.root.weight // 2:
+            print('rebalancing...')
             # Globally rebalance.
             # TODO: use a different order here?
             new_root: WBBNode[K, V] = WBBNode(d=self.d)
@@ -129,6 +130,10 @@ class WBBTree(Generic[K, V]):
         return all(node.keys == sorted(node.keys)
                    for node in self.root.all_nodes())
 
+    def _deleted_invariant(self) -> bool:
+        """Invariant: at most half of the keys in the tree are deleted."""
+        return self.deleted <= self.root.weight // 2
+
     def check_invariants(self) -> None:
         """Verifies that the tree is well-formed."""
         assert self._depth_invariant(), 'Leaves have unequal depths.'
@@ -145,6 +150,7 @@ class WBBTree(Generic[K, V]):
         assert self._balance_invariant(), 'Tree is unbalanced.'
         assert self._key_order_invariant(), \
                '≥1 node has keys in the wrong order.'
+        assert self._deleted_invariant(), 'Tree has too many deleted nodes.'
 
 
 class WBBNode(Generic[K, V]):
@@ -305,12 +311,14 @@ class WBBNode(Generic[K, V]):
     def all(self) -> KVIterator:
         """Finds all the key-value pairs in the subtree rooted at the node."""
         if self.is_leaf:
-            yield from zip(self.keys, self.vals)
+            for key, val in zip(self.keys, self.vals):
+                if key not in self.deleted:
+                    yield (key, val)
         else:
             # In-order traversal.
             for child, key, val in zip(self.children, self.keys, self.vals):
                 yield from child.all()
-                if key not in child.deleted:
+                if key not in self.deleted:
                     yield (key, val)
             if len(self.children) > len(self.keys):
                 yield from self.children[-1].all()
