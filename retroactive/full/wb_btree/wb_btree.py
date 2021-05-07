@@ -78,14 +78,14 @@ class WBBTree(Generic[K, V]):
     def _weight_invariant(self) -> bool:
         """Invariant: a node's weight == the number of keys it contains +
         the weight of its children."""
-        return all(node.weight ==
-                   len(node.keys) + sum(c.weight for c in node.children)
+        return all(node.weight == len(node.keys) + sum(c.weight
+                                                       for c in node.children)
                    for node in self.root.all_nodes())
 
     def _kv_invariant(self) -> bool:
         """Invariant: number of node keys == number of node values."""
-        return all(len(node.keys) == len(node.vals)
-                   for node in self.root.all_nodes())
+        return all(
+            len(node.keys) == len(node.vals) for node in self.root.all_nodes())
 
     def _balance_invariant(self) -> bool:
         """Invariant 3: balance.
@@ -97,7 +97,7 @@ class WBBTree(Generic[K, V]):
             d^{h-1} / 2 ≤ w(u) ≤ 2d^{h-1}.
         """
         leaf_depth, _ = next(self.root.leaves())
-        height = leaf_depth + 2   # We assume the depth invariant holds.
+        height = leaf_depth + 2  # We assume the depth invariant holds.
         nodes = deque((height - 1, c) for c in self.root.children)
         while nodes:
             node_height, node = nodes.popleft()
@@ -111,14 +111,15 @@ class WBBTree(Generic[K, V]):
     def _local_balance_invariant(self) -> bool:
         """Invariant 5: All internal non-root nodes have between d/4 and 4d
         children."""
-        return all(self.d // 4 <= len(node.children) <= 4 * self.d
-                   or node == self.root
+        return all(self.d // 4 <= len(node.children) <= 4 *
+                   self.d or node == self.root
                    for node in self.root.internal_nodes())
 
     def _num_children_invariant(self) -> bool:
         """Invariant: At each internal node, # of children == # of keys + 1."""
-        return all(len(node.children) == len(node.keys) + 1
-                   for node in self.root.internal_nodes())
+        return all(
+            len(node.children) == len(node.keys) + 1
+            for node in self.root.internal_nodes())
 
     def _num_keys_invariant(self) -> bool:
         """Invariant: Each node has ≥1 key."""
@@ -207,7 +208,6 @@ class WBBNode(Generic[K, V]):
             left.weight = idx
         else:
             # Internal node: find an approximately weight-balanced split.
-            # node key node key node key node 
             data = zip(self.children, self.keys, self.vals)
             weight = 0
             for idx, (node, k, v) in enumerate(data):
@@ -320,8 +320,7 @@ class WBBNode(Generic[K, V]):
                 yield from child.all()
                 if key not in self.deleted:
                     yield (key, val)
-            if len(self.children) > len(self.keys):
-                yield from self.children[-1].all()
+            yield from self.children[-1].all()
 
     def __repr__(self):
         if self.is_leaf:

@@ -3,22 +3,26 @@ import pytest
 from random import Random
 from wb_btree import WBBTree
 
+
 def random_seq(length, seed):
     rng = Random(seed)
     seq = list(range(length))
     rng.shuffle(seq)
     return seq
 
+
 def make_sequences(prefix, length, num_random, seed_offset=0):
     return {
         **{
             f'{prefix}_asc': list(range(length)),
             f'{prefix}_desc': list(reversed(range(length))),
-        }, **{
+        },
+        **{
             f'{prefix}_rand_{seed}': random_seq(length, seed + seed_offset)
             for seed in range(num_random)
         }
     }
+
 
 def all_iterator_invariant(tree, seq):
     """Invariant: all() generates key-value pairs in ascending order."""
@@ -26,10 +30,12 @@ def all_iterator_invariant(tree, seq):
         assert key == actual_k, f"Keys don't match ({key} ≠ {actual_k})"
         assert key == actual_v, f"Values don't match ({key} ≠ {actual_v})"
 
+
 def find_invariant(tree, seq):
     """Invariant: inserted keys can be found and return the right value."""
     for el in seq:
         assert tree.find(el) == el
+
 
 def not_found_invariant(tree, seq):
     """Invariant: deleted keys cannot be found."""
@@ -37,15 +43,17 @@ def not_found_invariant(tree, seq):
         print('found', tree.find(el), 'for', el)
         assert tree.find(el) is None
 
+
 short_sequences = make_sequences('short', 500, 20)
 long_sequences = make_sequences('long', 10000, 50)
 insert_and_delete_sequences = {
     k: (ins_seq, del_seq)
-    for ((k, ins_seq), (_, del_seq))
-    in zip(make_sequences('shortest', 250, 20).items(),
-           make_sequences('shortest', 250, 20, seed_offset=20).items())
+    for ((k, ins_seq), (_, del_seq)) in zip(
+        make_sequences('shortest', 250, 20).items(),
+        make_sequences('shortest', 250, 20, seed_offset=20).items())
 }
 d_vals = [5, 8, 16, 32]
+
 
 # Strict tests check invariants at every step.
 @pytest.mark.parametrize('seq', short_sequences.keys())
