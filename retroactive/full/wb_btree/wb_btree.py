@@ -17,7 +17,7 @@ from collections import deque
 K = TypeVar('K')
 V = TypeVar('V')
 KV = Tuple[K, V]
-NodeIterator = Generator['WBBTree[K, V]', None, None]
+NodeIterator = Generator['WBBNode[K, V]', None, None]
 KVIterator = Generator[KV, None, None]
 
 
@@ -42,14 +42,13 @@ class WBBTree(Generic[K, V]):
         If `key` is already in the tree, a `ValueError`` is raised."""
         self.root = self.root.insert(key, val)
 
-    def delete(self, key: K) -> None:
-        """Deletes a key-value pair in the tree.
+    def remove(self, key: K) -> None:
+        """Removes a key-value pair from the tree.
 
         If the `key` is not in the tree, a ``ValueError`` is raised."""
         self.root.mark_deleted(key)
         self.deleted += 1
         if self.deleted > self.root.weight // 2:
-            print('rebalancing...')
             # Globally rebalance.
             # TODO: use a different order here?
             new_root: WBBNode[K, V] = WBBNode(d=self.d)

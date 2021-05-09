@@ -20,15 +20,15 @@ class RangeMeta(ABC):
     """Abstract base class for range metadata."""
     @abstractmethod
     def __init__(self, key: K, val: V, container: NodeType):
-        raise NotImplementedError
+        """Initializes range metadata."""
 
     @abstractmethod
     def insert(self, key: K, val: V, container: NodeType) -> None:
-        raise NotImplementedError
+        """Updates range metadata to reflect an insert of a leaf."""
 
     @abstractmethod
     def remove(self, key: K, val: V, container: NodeType) -> None:
-        raise NotImplementedError
+        """Updates range metadata to reflect removal of a leaf."""
 
 
 class RangeTree(Generic[K, V]):
@@ -134,6 +134,7 @@ class RangeNode(Generic[K, V]):
             meta_cls = None
         new_leaf = RangeNode(key, val, meta_cls)
         replacement_leaf = copy(leaf)
+        replacement_leaf.meta = copy(leaf.meta)
         leaf.val = None
         if leaf.min > key:
             leaf.min = key
@@ -164,7 +165,8 @@ class RangeNode(Generic[K, V]):
                 if child.size > alpha * parent.size:
                     scapegoat = parent
             if scapegoat == self:
-                return rebuild_fn(self)
+                rebuilt = rebuild_fn(self)
+                return rebuilt
             if scapegoat == parent.left:
                 parent.left = rebuild_fn(scapegoat)
             else:
@@ -242,9 +244,13 @@ class RangeNode(Generic[K, V]):
 
     def __repr__(self):
         if self.is_leaf:
-            return f'leaf with key {self.min}'
-        return (f'internal node with key range [{self.min}, {self.max}] ' +
-                f'(size {self.size})')
+            desc = f'leaf with key {self.min}'
+        else:
+            desc = (f'internal node with key range [{self.min}, {self.max}] ' +
+                    f'(size {self.size})')
+        if self.meta:
+            desc += f' (meta: {self.meta})'
+        return desc
 
 
 AggType = Callable[[V, V], V]
@@ -263,6 +269,9 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
 
         def remove(self, key: K, val: V, container: NodeType) -> None:
             self.val = remove_fn(self.val, val)
+
+        def __repr__(self):
+            return str(self.val)
 
     def rebuild_fn(root: NodeType) -> NodeType:
         """Rebuild from the bottom up."""
@@ -286,6 +295,7 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
                 next_level.append(left)
             if not leaves and len(next_level) > 1:
                 leaves = next_level
+                next_level = deque()
         return next_level.pop()
 
 
