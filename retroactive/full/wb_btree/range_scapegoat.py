@@ -1,6 +1,6 @@
 """A dynamic range tree based on the scapegoat tree."""
-from typing import (TypeVar, Generic, Optional, List, Tuple,
-                    Generator, Callable, Iterable, Any)
+from typing import (TypeVar, Generic, Optional, List, Tuple, Generator,
+                    Callable, Iterable, Any)
 from abc import ABC, abstractmethod
 from copy import copy
 from math import log
@@ -32,14 +32,11 @@ class RangeMeta(ABC):
 
 
 class RangeTree(Generic[K, V]):
-    """A dynamic range tree based on the scapegoat tree.
-
-    TODO: more documentation here.
-    """
+    """A dynamic range tree based on the scapegoat tree."""
     def __init__(self,
                  rebuild_fn: RebuildType,
                  meta_cls: MetaType = None,
-                 alpha: float = 2/3):
+                 alpha: float = 2 / 3):
         """Creates a dynamic range tree with scapegoat rebalancing.
 
         Each internal node represents a range; leaves represent key-value
@@ -75,6 +72,10 @@ class RangeTree(Generic[K, V]):
         self.root: Optional[NodeType] = None
 
     def find(self, key: K) -> Optional[V]:
+        """Searches for a key in the tree.
+
+        If the key is found, its associate value is returned. Otherwise,
+        `None` is returned."""
         if self.root:
             return self.root.find(key)
 
@@ -121,9 +122,9 @@ class RangeTree(Generic[K, V]):
     def _internal_order_invariant(self) -> bool:
         """Invariant: at each internal node,
         left.min < left.max < right.min < right.max."""
-        return all(node.left.min < node.left.max <
-                   node.right.min < node.right.max
-                   for node in self.root.internal_nodes())
+        return all(
+            node.left.min < node.left.max < node.right.min < node.right.max
+            for node in self.root.internal_nodes())
 
     def _internal_val_invariant(self) -> bool:
         """Invariant: internal nodes do not have values attached."""
@@ -139,8 +140,8 @@ class RangeTree(Generic[K, V]):
           (b) All nodes have metadata, and each metadata object is distinct."""
         if self._meta_cls:
             metas = [node.meta for node in self.root.all_nodes()]
-            return (all(m is not None for m in metas) and
-                    len(metas) == len(set(metas)))
+            return (all(m is not None for m in metas)
+                    and len(metas) == len(set(metas)))
         return all(node.meta is None for node in self.root.all_nodes())
 
     def check_invariants(self) -> None:
@@ -195,11 +196,11 @@ class RangeNode(Generic[K, V]):
             elif self.right and self.right.min <= key:
                 yield from self.right.path(key)
 
-    def insert(self,
-               key: K,
-               val: V,
-               rebuild_fn: RebuildType,
+    def insert(self, key: K, val: V, rebuild_fn: RebuildType,
                alpha: float) -> Tuple[NodeType, int]:
+        """Inserts a key-value pair in the subtree rooted at the node,
+        rebalancing if necessary (as determined by the balance factor ɑ)
+        using `rebuild_fn`."""
         path = list(self.path(key))
         leaf = path[-1]
         if leaf.is_leaf and leaf.min == key:
@@ -234,8 +235,7 @@ class RangeNode(Generic[K, V]):
         if len(path) > log(self.ub) / log(1 / alpha):
             scapegoat = None
             parent = None
-            for parent, child in zip(reversed(path[:-1]),
-                                     reversed(path[1:])):
+            for parent, child in zip(reversed(path[:-1]), reversed(path[1:])):
                 if scapegoat:
                     break
                 if child.size > alpha * parent.size:
@@ -250,6 +250,15 @@ class RangeNode(Generic[K, V]):
         return self
 
     def remove(self, key: K, rebuild_fn: RebuildType) -> Optional[NodeType]:
+        """Removes a key (if it exists) from the subtree rooted at the node.
+
+        If the key does not exist in the subtree, a `ValueError` is raised.
+
+        Returns:
+            A new root, possibly resulting from a rebalancing with
+            `rebuild_fn`.  If deleting the key yields an empty subtree,
+            `None` is returned.
+        """
         path = list(self.path(key))
         leaf = path[-1]
         if key != leaf.min or key != leaf.max:
@@ -351,6 +360,7 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
     """Generates a metadata class and rebuild function for a simple
     aggregation (e.g. +, *)."""
     class AggMeta(RangeMeta):
+        """Metadata class for an aggregation."""
         def __init__(self, key: K, val: V, container: NodeType):
             super().__init__(key, val, container)
             self.val = val
@@ -365,7 +375,7 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
             return str(self.val)
 
     def rebuild_fn(root: NodeType) -> NodeType:
-        """Rebuild from the bottom up in O(n) time."""
+        """Rebuilds from the bottom up in O(n) time."""
         leaves = deque(leaf for _, leaf in root.leaves())
         next_level = deque()
         while leaves:
@@ -389,8 +399,8 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
                 next_level = deque()
         return next_level.pop()
 
-
     class AggRangeTree(RangeTree):
+        """A range tree with an aggregation and bottom-up rebalancing."""
         def __init__(self):
             super().__init__(rebuild_fn, AggMeta)
 

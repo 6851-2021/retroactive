@@ -34,6 +34,10 @@ class WBBTree(Generic[K, V]):
         self.root: WBBNode[K, V] = WBBNode(d=d)
 
     def find(self, key: K) -> Optional[V]:
+        """Searches for a key in the tree.
+
+        If the key is found, its associate value is returned. Otherwise,
+        `None` is returned."""
         return self.root.find(key)
 
     def insert(self, key: K, val: V) -> None:
@@ -230,6 +234,13 @@ class WBBNode(Generic[K, V]):
         return left, (median_key, median_val), right
 
     def insert(self, key: K, val: V) -> 'WBBNode[K, V]':
+        """Inserts a key-value pair into the subtree rooted at the node.
+
+        If the key already exists, a `ValueError` is raised.
+
+        Returns:
+            A new root with the key inserted.
+        """
         path = list(self.path(key))
         leaf = path[-1]
         if key in leaf.keys:
@@ -280,6 +291,9 @@ class WBBNode(Generic[K, V]):
         return self
 
     def mark_deleted(self, key: K) -> 'WBBNode[K, V]':
+        """Marks a key as deleted (lazy deletion).
+
+        If the key does not exist, a `ValueError` is raised."""
         path = list(self.path(key))
         if key not in path[-1].keys or key in path[-1].deleted:
             raise ValueError(f'Cannot delete "{key}" (not in tree)')
