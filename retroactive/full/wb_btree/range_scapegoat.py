@@ -38,10 +38,40 @@ class RangeTree(Generic[K, V]):
     """
     def __init__(self,
                  rebuild_fn: RebuildType,
-                 meta_cls: MetaType = None):
-        """Creates a weight-balanced B-tree with balance factor `d`."""
+                 meta_cls: MetaType = None,
+                 alpha: float = 2/3):
+        """Creates a dynamic range tree with scapegoat rebalancing.
+
+        Each internal node represents a range; leaves represent key-value
+        pairs. Every node can have metadata attached.
+
+        This is intended as a base class; the metadata class (which implements
+        the `RangeMeta` abstract base class) and rebuilding function must be
+        provided by the user, as there are applications where rebuilding
+        can be done bottom-up in O(n) time (e.g. trees with simple aggregations
+        like summing) and applications where rebuilding is slower and must be
+        done in a custom way (e.g. trees of fusible partially retroactive
+        priority queues).
+
+        Args:
+            rebuild_fn: A function that takes a subtree rooted at a given
+              `RangeNode` and rebuilds the tree to be (approximately) balanced
+              with metadata preserved.
+            meta_cls: The node-level metadata class, which must implement
+              `RangeMeta`.
+            alpha: The balance parameter (0.5 < alpha < 1). Lower values will
+              result in a more strictly balanced tree, but more rebuilds
+              are required in the worst case (slow inserts, fast searches);
+              higher values result in a loosely balanced tree that is not
+              rebuilt as frequently (fast inserts, slow searches).
+        """
+        if alpha < 0.5:
+            raise ValueError('α must be at least 0.5.')
+        if alpha > 1:
+            raise ValueError('α must be less than 1.')
         self._meta_cls = meta_cls
         self._rebuild_fn = rebuild_fn
+        self.alpha = alpha
         self.root: Optional[NodeType] = None
 
     def find(self, key: K) -> Optional[V]:
@@ -53,12 +83,13 @@ class RangeTree(Generic[K, V]):
 
         If `key` is already in the tree, a `ValueError`` is raised."""
         if self.root:
-            self.root = self.root.insert(key, val, self._rebuild_fn)
+            self.root = self.root.insert(key, val, self._rebuild_fn,
+                                         self.alpha)
         else:
             self.root = RangeNode(key, val, self._meta_cls)
 
     def remove(self, key: K) -> None:
-        """Remove a key-value pair from the tree.
+        """Removes a key-value pair from the tree.
 
         If the `key` is not in the tree, a ``ValueError`` is raised."""
         if self.root:
@@ -67,13 +98,58 @@ class RangeTree(Generic[K, V]):
             raise ValueError('Cannot remove from an empty tree.')
 
     def all(self) -> KVMetaIterator:
-        """Returns all key-value pairs in order."""
+        """Returns all key-value-meta tuples in order."""
         if self.root:
             return self.root.all()
 
+    def in_range(self, lb: K, ub: K) -> KVMetaIterator:
+        """Returns all key-value-meta tuples with keys in range [lb, ub]."""
+        for node in self.nodes_in_range(lb, ub):
+            yield from node.all()
+
+    def nodes_in_range(self, lb: K, ub: K) -> NodeIterator:
+        """Generates a minimal set of nodes (expected size O(log n)) covering
+        the range [lb, ub]."""
+        if self.root:
+            return self.root.nodes_in_range(lb, ub)
+
+    def _range_invariant(self) -> bool:
+        """Invariant: an internal node's range is [left.min, right.max]."""
+        return all(node.min == node.left.min and node.max == node.right.max
+                   for node in self.root.internal_nodes())
+
+    def _internal_order_invariant(self) -> bool:
+        """Invariant: at each internal node,
+        left.min < left.max < right.min < right.max."""
+        return all(node.left.min < node.left.max <
+                   node.right.min < node.right.max
+                   for node in self.root.internal_nodes())
+
+    def _internal_val_invariant(self) -> bool:
+        """Invariant: internal nodes do not have values attached."""
+        return all(node.val is None for node in self.root.internal_nodes())
+
+    def _ub_size_invariant(self) -> bool:
+        """Invariant: at each node, ub ≤ 2 * size."""
+        return all(node.ub <= 2 * node.size for node in self.root.all_nodes())
+
+    def _meta_invariant(self) -> bool:
+        """Invariant: either
+          (a) No nodes have metadata -or-
+          (b) All nodes have metadata, and each metadata object is distinct."""
+        if self._meta_cls:
+            metas = [node.meta for node in self.root.all_nodes()]
+            return (all(m is not None for m in metas) and
+                    len(metas) == len(set(metas)))
+        return all(node.meta is None for node in self.root.all_nodes())
+
     def check_invariants(self) -> None:
         """Verifies that the tree is well-formed."""
-        # TODO
+        assert self._range_invariant()
+        assert self._internal_order_invariant()
+        assert self._internal_val_invariant()
+        assert self._ub_size_invariant()
+        assert self._meta_invariant()
 
 
 class RangeNode(Generic[K, V]):
@@ -123,7 +199,7 @@ class RangeNode(Generic[K, V]):
                key: K,
                val: V,
                rebuild_fn: RebuildType,
-               alpha: float = 2/3) -> Tuple[NodeType, int]:
+               alpha: float) -> Tuple[NodeType, int]:
         path = list(self.path(key))
         leaf = path[-1]
         if leaf.is_leaf and leaf.min == key:
@@ -234,13 +310,28 @@ class RangeNode(Generic[K, V]):
 
     def all(self) -> KVMetaIterator:
         """Finds all the key-value pairs in the subtree rooted at the node."""
-        print(self, self.left, self.right)
         if self.is_leaf:
             yield (self.min, self.val, self.meta)
         else:
             # In-order traversal.
             yield from self.left.all()
             yield from self.right.all()
+
+    def nodes_in_range(self, lb: K, ub: K) -> NodeIterator:
+        """Generates a minimal set of nodes (expected size O(log n)) covering
+        the range [lb, ub]."""
+        if lb > ub:
+            raise ValueError('Invalid range query: ' +
+                             f'lower bound ({lb}) > upper bound ({ub}).')
+        if lb <= self.min <= self.max <= ub:
+            # If the current node's range is completely contained in [lb, ub],
+            # don't traverse any deeper.
+            yield self
+            return
+        if self.left.max >= lb:
+            yield from self.left.nodes_in_range(lb, ub)
+        if self.right.min <= ub:
+            yield from self.right.nodes_in_range(lb, ub)
 
     def __repr__(self):
         if self.is_leaf:
@@ -274,7 +365,7 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
             return str(self.val)
 
     def rebuild_fn(root: NodeType) -> NodeType:
-        """Rebuild from the bottom up."""
+        """Rebuild from the bottom up in O(n) time."""
         leaves = deque(leaf for _, leaf in root.leaves())
         next_level = deque()
         while leaves:
