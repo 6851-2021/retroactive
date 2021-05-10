@@ -3,7 +3,7 @@ from typing import (TypeVar, Generic, Optional, List, Tuple, Generator,
                     Callable, Iterable, Any)
 from abc import ABC, abstractmethod
 from copy import copy
-from math import log
+from math import log, floor
 from collections import deque
 
 K = TypeVar('K')
@@ -15,6 +15,9 @@ RebuildType = Callable[[NodeType], NodeType]
 NodeIterator = Generator[NodeType, None, None]
 KVMetaIterator = Generator[KVMeta, None, None]
 
+# partially based on
+# https://opendatastructures.org/newhtml/ods/latex/scapegoat.html
+# TODO: full citations
 
 class RangeMeta(ABC):
     """Abstract base class for range metadata."""
@@ -101,7 +104,7 @@ class RangeTree(Generic[K, V]):
     def all(self) -> KVMetaIterator:
         """Returns all key-value-meta tuples in order."""
         if self.root:
-            return self.root.all()
+            yield from self.root.all()
 
     def in_range(self, lb: K, ub: K) -> KVMetaIterator:
         """Returns all key-value-meta tuples with keys in range [lb, ub]."""
@@ -121,9 +124,9 @@ class RangeTree(Generic[K, V]):
 
     def _internal_order_invariant(self) -> bool:
         """Invariant: at each internal node,
-        left.min < left.max < right.min < right.max."""
+        left.min ≤ left.max < right.min ≤ right.max."""
         return all(
-            node.left.min < node.left.max < node.right.min < node.right.max
+            node.left.min <= node.left.max < node.right.min <= node.right.max
             for node in self.root.internal_nodes())
 
     def _internal_val_invariant(self) -> bool:
@@ -131,8 +134,8 @@ class RangeTree(Generic[K, V]):
         return all(node.val is None for node in self.root.internal_nodes())
 
     def _ub_size_invariant(self) -> bool:
-        """Invariant: at each node, ub ≤ 2 * size."""
-        return all(node.ub <= 2 * node.size for node in self.root.all_nodes())
+        """Invariant: at the root node, ub ≤ 2 * size."""
+        return self.root.ub <= 2 * self.root.size
 
     def _meta_invariant(self) -> bool:
         """Invariant: either
@@ -144,13 +147,30 @@ class RangeTree(Generic[K, V]):
                     and len(metas) == len(set(metas)))
         return all(node.meta is None for node in self.root.all_nodes())
 
+    def _balance_invariant(self) -> bool:
+        """Invariant: the tree is approximately balanced."""
+        max_depth = max(depth for depth, _ in self.root.leaves())
+        # see https://en.wikipedia.org/wiki/Scapegoat_tree for
+        # ɑ-height-balance and ɑ-weight-balance invariants, which we
+        # loosen slightly o account for internal nodes.
+        depth_ub = floor(log(2 * (self.root.ub + 1)) / log(1 / self.alpha)) + 1
+        print('max depth:', max_depth, '\tdepth ub:', depth_ub, '\tsize ub:', self.root.ub)
+        return max_depth <= depth_ub
+
     def check_invariants(self) -> None:
         """Verifies that the tree is well-formed."""
-        assert self._range_invariant()
-        assert self._internal_order_invariant()
-        assert self._internal_val_invariant()
-        assert self._ub_size_invariant()
-        assert self._meta_invariant()
+        if self.root:
+            assert self._range_invariant(), \
+                "An internal node's range is not [left.min, right.max]."
+            assert self._internal_order_invariant(), \
+                ("An internal node's child ranges are out of order " +
+                 "(expected: L.min ≤ L.max < R.min ≤ R.max).")
+            assert self._internal_val_invariant(), \
+                'An internal node has a value attached.'
+            assert self._ub_size_invariant(), \
+                'A node has too many deleted keys (ub > 2 * size).'
+            assert self._meta_invariant(), 'A node has invalid metadata.'
+            assert self._balance_invariant(), 'The tree is too unbalanced'
 
 
 class RangeNode(Generic[K, V]):
@@ -193,7 +213,7 @@ class RangeNode(Generic[K, V]):
         if not self.is_leaf:
             if self.left and self.left.max >= key:
                 yield from self.left.path(key)
-            elif self.right and self.right.min <= key:
+            else:
                 yield from self.right.path(key)
 
     def insert(self, key: K, val: V, rebuild_fn: RebuildType,
@@ -232,15 +252,15 @@ class RangeNode(Generic[K, V]):
                 node.meta.insert(key, val, node)
 
         # Scapegoat rebuild.
-        if len(path) > log(self.ub) / log(1 / alpha):
+        if len(path) > log(2 * self.ub) / log(1 / alpha):
             scapegoat = None
             parent = None
             for parent, child in zip(reversed(path[:-1]), reversed(path[1:])):
                 if scapegoat:
                     break
-                if child.size > alpha * parent.size:
+                if child.size > int(alpha * parent.size) + 1:
                     scapegoat = parent
-            if scapegoat == self:
+            if scapegoat is None or scapegoat == self:
                 rebuilt = rebuild_fn(self)
                 return rebuilt
             if scapegoat == parent.left:
@@ -314,8 +334,9 @@ class RangeNode(Generic[K, V]):
     def all_nodes(self) -> NodeIterator:
         """Finds all the nodes in the subtree rooted at the node."""
         yield self
-        yield from self.left.all_nodes()
-        yield from self.right.all_nodes()
+        if not self.is_leaf:
+            yield from self.left.all_nodes()
+            yield from self.right.all_nodes()
 
     def all(self) -> KVMetaIterator:
         """Finds all the key-value pairs in the subtree rooted at the node."""
@@ -358,7 +379,7 @@ AggType = Callable[[V, V], V]
 
 def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
     """Generates a metadata class and rebuild function for a simple
-    aggregation (e.g. +, *)."""
+    (i.e. commutative, etc.) aggregation (e.g. +, *)."""
     class AggMeta(RangeMeta):
         """Metadata class for an aggregation."""
         def __init__(self, key: K, val: V, container: NodeType):
@@ -401,8 +422,22 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
 
     class AggRangeTree(RangeTree):
         """A range tree with an aggregation and bottom-up rebalancing."""
-        def __init__(self):
-            super().__init__(rebuild_fn, AggMeta)
+        def __init__(self, *args, **kwargs):
+            super().__init__(rebuild_fn, AggMeta, *args, **kwargs)
+
+        def _agg_invariant(self) -> bool:
+            """Invariant: the aggregation is consistent."""
+            return all(node.meta.val ==
+                       insert_fn(node.left.meta.val, node.right.meta.val)
+                       for node in self.root.internal_nodes())
+
+        def check_invariants(self):
+            """Checks all tree invariants, plus the aggregation invariant."""
+            super().check_invariants()
+            if self.root:
+                assert self._agg_invariant(), \
+                    ("A node's aggregation metadata is inconsistent with " +
+                     "its children's.")
 
     return AggRangeTree
 
