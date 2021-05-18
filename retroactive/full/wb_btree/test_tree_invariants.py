@@ -20,12 +20,13 @@ def make_sequences(prefix, length, num_random, seed_offset=0):
     nearest_pow = round(log2(length))
     return {
         **{
-            f'{prefix}_asc': list(range(length)),
-            f'{prefix}_desc': list(reversed(range(length))),
+            f'{prefix}_asc':
+            list(range(length)),
+            f'{prefix}_desc':
+            list(reversed(range(length))),
             # elegant bit reversal: https://stackoverflow.com/a/12682003
             f'{prefix}_bit_reversal': [
-                int(('{:0' + str(nearest_pow) + 'b}').format(n)[::-1], 2)
-                for n in range(2**nearest_pow)
+                int(('{:0' + str(nearest_pow) + 'b}').format(n)[::-1], 2) for n in range(2**nearest_pow)
             ]
         },
         **{
@@ -83,7 +84,7 @@ d_vals = [5, 8, 16, 32]
 # and fewer children per internal node than weight-balanced B-trees,
 # so we use smaller test cases to achieve comparable test runtimes.
 range_tree_short_sequences = make_sequences('short', 100, 20)
-range_tree_long_sequences = make_sequences('long',  2000, 50)
+range_tree_long_sequences = make_sequences('long', 2000, 50)
 range_tree_insert_and_delete_sequences = {
     k: (ins_seq, del_seq)
     for ((k, ins_seq), (_, del_seq)) in zip(
@@ -218,4 +219,3 @@ def test_sum_range_tree_insert_nodes_in_range(seq):
         assert key == val == meta.val
         keys.append(key)
     assert keys == list(range(100, 501))
-

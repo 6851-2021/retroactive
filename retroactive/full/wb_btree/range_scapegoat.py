@@ -2,7 +2,7 @@
 from typing import (TypeVar, Generic, Optional, List, Tuple, Generator,
                     Callable, Iterable, Any)
 from abc import ABC, abstractmethod
-from copy import copy
+from copy import copy, deepcopy
 from math import log, floor
 from collections import deque
 
@@ -19,6 +19,7 @@ KVMetaIterator = Generator[KVMeta, None, None]
 # partially based on
 # https://opendatastructures.org/newhtml/ods/latex/scapegoat.html
 # TODO: full citations
+
 
 class RangeMeta(ABC):
     """Abstract base class for range metadata."""
@@ -165,7 +166,8 @@ class RangeTree(Generic[K, V]):
         # ɑ-height-balance and ɑ-weight-balance invariants, which we
         # loosen slightly o account for internal nodes.
         depth_ub = floor(log(2 * (self.root.ub + 1)) / log(1 / self.alpha)) + 1
-        print('max depth:', max_depth, '\tdepth ub:', depth_ub, '\tsize ub:', self.root.ub)
+        print('max depth:', max_depth, '\tdepth ub:', depth_ub, '\tsize ub:',
+              self.root.ub)
         return max_depth <= depth_ub
 
     def check_invariants(self) -> None:
@@ -251,7 +253,7 @@ class RangeNode(Generic[K, V]):
             meta_cls = None
         new_leaf = RangeNode(key, val, meta_cls)
         replacement_leaf = copy(leaf)
-        replacement_leaf.meta = copy(leaf.meta)
+        replacement_leaf.meta = deepcopy(leaf.meta)
         leaf.val = None
         if leaf.min > key:
             leaf.min = key
@@ -476,8 +478,8 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
 
         def _agg_invariant(self) -> bool:
             """Invariant: the aggregation is consistent."""
-            return all(node.meta.val ==
-                       insert_fn(node.left.meta.val, node.right.meta.val)
+            return all(node.meta.val == insert_fn(node.left.meta.val,
+                                                  node.right.meta.val)
                        for node in self.root.internal_nodes())
 
         def check_invariants(self):

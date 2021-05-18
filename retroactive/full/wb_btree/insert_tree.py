@@ -11,7 +11,9 @@ from functools import partial
 TS = TypeVar('TS')
 V = TypeVar('V')
 
-def _cmp_or_none(cmp: Callable, a: Optional[Any], b: Optional[Any]) -> Optional[Any]:
+
+def _cmp_or_none(cmp: Callable, a: Optional[Any],
+                 b: Optional[Any]) -> Optional[Any]:
     if a is not None and b is not None:
         return cmp(a, b, key=lambda kv: kv[0])
     elif a is not None:
@@ -58,14 +60,10 @@ class InsertMeta(RangeMeta):
     def _propagate(self, parent):
         """Propagate changes upward."""
         if parent:
-            self.max_absent = _max_or_none(
-                parent.left.meta.max_absent,
-                parent.right.meta.max_absent
-            )
-            self.min_present = _min_or_none(
-                parent.left.meta.min_present,
-                parent.right.meta.min_present
-            )
+            self.max_absent = _max_or_none(parent.left.meta.max_absent,
+                                           parent.right.meta.max_absent)
+            self.min_present = _min_or_none(parent.left.meta.min_present,
+                                            parent.right.meta.min_present)
 
 
 def insert_tree_rebuild(root: NodeType) -> NodeType:
@@ -83,14 +81,10 @@ def insert_tree_rebuild(root: NodeType) -> NodeType:
             parent.ub = left.ub + right.ub
             parent.size = left.size + right.size
             parent.meta = InsertMeta()
-            parent.meta.max_absent = _max_or_none(
-                left.meta.max_absent,
-                right.meta.max_absent
-            )
-            parent.meta.min_present = _min_or_none(
-                left.meta.min_present,
-                right.meta.min_present
-            )
+            parent.meta.max_absent = _max_or_none(left.meta.max_absent,
+                                                  right.meta.max_absent)
+            parent.meta.min_present = _min_or_none(left.meta.min_present,
+                                                   right.meta.min_present)
             next_level.append(parent)
         else:
             next_level.append(left)
@@ -103,8 +97,7 @@ def insert_tree_rebuild(root: NodeType) -> NodeType:
 class InsertTree(RangeTree[TS, V]):
     """Stores insertions in a partially retroactive priority queue."""
     def __init__(self):
-        super().__init__(rebuild_fn=insert_tree_rebuild,
-                         meta_cls=InsertMeta)
+        super().__init__(rebuild_fn=insert_tree_rebuild, meta_cls=InsertMeta)
 
     def mark_present(self, ts: TS):
         path = list(self.root.path(ts))
@@ -118,28 +111,22 @@ class InsertTree(RangeTree[TS, V]):
             for node in reversed(path):
                 node.meta.mark_absent(path[-1].val, node)
 
-    def max_absent_in_range(self, lb: TS, ub: TS) -> Tuple[Optional[V], Optional[TS]]:
+    def max_absent_in_range(self, lb: TS,
+                            ub: TS) -> Tuple[Optional[V], Optional[TS]]:
         if not self.root:
             return None, None
-        return max(
-            (
-                node.meta.max_absent
-                for node in self.root.nodes_in_range(lb, ub)
-                if node.meta.max_absent is not None
-            ),
-            key=lambda kv: kv[0],
-            default=(None, None)
-        )
+        return max((node.meta.max_absent
+                    for node in self.root.nodes_in_range(lb, ub)
+                    if node.meta.max_absent is not None),
+                   key=lambda kv: kv[0],
+                   default=(None, None))
 
-    def min_present_in_range(self, lb: TS, ub: TS) -> Tuple[Optional[V], Optional[TS]]:
+    def min_present_in_range(self, lb: TS,
+                             ub: TS) -> Tuple[Optional[V], Optional[TS]]:
         if not self.root:
             return None, None
-        return min(
-            (
-                node.meta.min_present
-                for node in self.root.nodes_in_range(lb, ub)
-                if node.meta.min_present is not None
-            ),
-            key=lambda kv: kv[0],
-            default=(None, None)
-        )
+        return min((node.meta.min_present
+                    for node in self.root.nodes_in_range(lb, ub)
+                    if node.meta.min_present is not None),
+                   key=lambda kv: kv[0],
+                   default=(None, None))

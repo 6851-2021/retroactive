@@ -2,10 +2,8 @@
 from typing import TypeVar, Optional, List
 from collections import deque
 from range_scapegoat import RangeTree, RangeNode, RangeMeta, NodeType
-from partial_pq import (
-    PRPriorityQueue, EventType, INSERT, DELETE_MIN,
-    TS, TS_ZERO, TS_EPSILON
-)
+from partial_pq import (PRPriorityQueue, EventType, INSERT, DELETE_MIN, TS,
+                        TS_ZERO, TS_EPSILON)
 
 V = TypeVar('V')
 
@@ -64,10 +62,8 @@ def prpq_tree_rebuild(root: NodeType) -> NodeType:
 class PriorityQueue:
     """A fully retroactive priority queue."""
     def __init__(self):
-        self.tree: RangeTree[TS, V] = RangeTree(
-            rebuild_fn=prpq_tree_rebuild,
-            meta_cls=PRPQMeta
-        )
+        self.tree: RangeTree[TS, V] = RangeTree(rebuild_fn=prpq_tree_rebuild,
+                                                meta_cls=PRPQMeta)
         self.t_next = 0
 
     def insert(self, val: V, t: Optional[TS] = None) -> None:
@@ -95,7 +91,6 @@ class PriorityQueue:
         elif t <= TS_ZERO:
             raise ValueError(f'timestamp must be > {TS_ZERO}.')
         self.tree.insert(t, DELETE_MIN)
-
 
     def delete_op(self, t: TS) -> None:
         """Deletes the operation at time `t` from the queue.

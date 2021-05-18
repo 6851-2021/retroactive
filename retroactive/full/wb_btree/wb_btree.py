@@ -178,7 +178,7 @@ class WBBNode(Generic[K, V]):
     def __init__(self, d: int = 8):
         """Creates a weight-balanced B-tree node with balance factor `d`."""
         self.weight = 0  # number of slots used
-        self.size = 0    # number of currently inserted elements
+        self.size = 0  # number of currently inserted elements
         self.d = d
         self.deleted: List[K] = []
         self.keys: List[K] = []

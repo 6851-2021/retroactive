@@ -51,8 +51,7 @@ class PRPriorityQueue(Generic[V]):
         else:
             t_bridge = bridge.min
         absent_val, absent_t = self.inserts.max_absent_in_range(
-            t_bridge, self.t_max
-        )
+            t_bridge, self.t_max)
         if val == absent_val:
             raise ValueError(f'Value {val} not unique.')
         if absent_val is None or val > absent_val:
@@ -70,6 +69,7 @@ class PRPriorityQueue(Generic[V]):
         self.t_max = max(t, self.t_max)
 
     def delete_min(self, t: Optional[TS] = None) -> None:
+        """Inserts a delete-min operation at time `t`."""
         if t is None:
             self.t_next += TS_EPSILON
             t = self.t_next
@@ -82,17 +82,15 @@ class PRPriorityQueue(Generic[V]):
         else:
             t_bridge = bridge.min
         present_val, present_t = self.inserts.min_present_in_range(
-            TS_ZERO, t_bridge
-        )
-        if present_t is None:
-            raise ValueError('Cannot delete from an empty queue.')
+            TS_ZERO, t_bridge)
         self.events.insert(t, DELETE_MIN)
         self.updates.insert(t, -1)
-        self.updates.remove(present_t)
-        self.updates.insert(present_t, 1)
-        self.now.remove(present_val)
-        self.inserts.mark_absent(present_t)
-        self.deleted.insert(present_val, present_t)
+        if present_t is not None:
+            self.updates.remove(present_t)
+            self.updates.insert(present_t, 1)
+            self.now.remove(present_val)
+            self.inserts.mark_absent(present_t)
+            self.deleted.insert(present_val, present_t)
 
     def delete_op(self, t: TS) -> None:
         """Deletes the operation at time `t` from the queue.
@@ -120,8 +118,7 @@ class PRPriorityQueue(Generic[V]):
         else:
             t_bridge = bridge.min
         absent_val, absent_t = self.inserts.max_absent_in_range(
-            t_bridge, self.t_max
-        )
+            t_bridge, self.t_max)
         self.events.remove(t)
         self.now.insert(absent_val, absent_t)
         self.inserts.mark_present(absent_t)
@@ -147,8 +144,7 @@ class PRPriorityQueue(Generic[V]):
             else:
                 t_bridge = bridge.min
             present_val, present_t = self.inserts.min_present_in_range(
-                TS_ZERO, t_bridge
-            )
+                TS_ZERO, t_bridge)
             self.now.remove(present_val)
             self.inserts.remove(present_t)
             self.updates.remove(present_t)
