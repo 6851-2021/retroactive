@@ -3,7 +3,7 @@
 This queue can be used independently, but it is intended to be
 nested within a fully retroactive priority queue.
 """
-from typing import TypeVar, Generic, Union, Tuple, Optional
+from typing import TypeVar, Generic, Union, Tuple, Optional, Generator
 from range_scapegoat import SumRangeTree
 from wb_btree import WBBTree
 from insert_tree import InsertTree
@@ -120,6 +120,7 @@ class PRPriorityQueue(Generic[V]):
         absent_val, absent_t = self.inserts.max_absent_in_range(
             t_bridge, self.t_max)
         self.events.remove(t)
+        self.updates.remove(t)
         self.now.insert(absent_val, absent_t)
         self.inserts.mark_present(absent_t)
         self.updates.remove(absent_t)
@@ -149,6 +150,10 @@ class PRPriorityQueue(Generic[V]):
             self.inserts.remove(present_t)
             self.updates.remove(present_t)
             self.deleted.insert(present_val, present_t)
+
+    def all(self) -> Generator[V, None, None]:
+        """Generates all the elements currently in the queue."""
+        yield from (v for v, _ in self.now.all())
 
     def __repr__(self):
         status = 'Qnow: ' + ' '.join([str(k) for k, _ in self.now.all()])

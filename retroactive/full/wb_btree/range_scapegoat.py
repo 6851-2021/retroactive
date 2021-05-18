@@ -166,8 +166,6 @@ class RangeTree(Generic[K, V]):
         # ɑ-height-balance and ɑ-weight-balance invariants, which we
         # loosen slightly o account for internal nodes.
         depth_ub = floor(log(2 * (self.root.ub + 1)) / log(1 / self.alpha)) + 1
-        print('max depth:', max_depth, '\tdepth ub:', depth_ub, '\tsize ub:',
-              self.root.ub)
         return max_depth <= depth_ub
 
     def check_invariants(self) -> None:

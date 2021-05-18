@@ -25,7 +25,6 @@ class PRPQMeta(RangeMeta):
 
     def remove(self, ts: TS, val: V, node: NodeType) -> None:
         """Removes an event from the priority queue."""
-        print('deleting at', ts)
         self.queue.delete_op(ts)
 
     def __repr__(self):
@@ -100,4 +99,29 @@ class PriorityQueue:
         self.tree.remove(t)
 
     def at(self, t: TS) -> List[V]:
-        pass
+        """Fuse O(log m) queues to get the contents of the queue at `t`."""
+        queues = list(self.tree.nodes_in_range(0, t))
+        if not queues:
+            return []
+        q1_now = [v for v, _ in queues[0].meta.queue.now.all()]
+        q1_deleted = [v for v, _ in queues[0].meta.queue.deleted.all()]
+        for queue in queues[1:]:
+            q2_now = [v for v, _ in queue.meta.queue.now.all()]
+            q2_deleted = [v for v, _ in queue.meta.queue.deleted.all()]
+            if len(q2_deleted) == 0:
+                q3_now = q2_now + q1_now
+                q3_deleted = q1_deleted
+            elif len(q1_now) < len(q2_deleted):
+                q3_now = q2_now
+                q3_deleted = q1_deleted + q1_now + q2_deleted
+            else:
+                joined = sorted(q1_now + q2_deleted)
+                split_idx = len(q1_now) - len(q2_deleted)
+                q3_now = q2_now + joined[-split_idx:]
+                q3_deleted = q1_deleted + joined[:len(q2_deleted)]
+            q1_now = q3_now
+            q1_deleted = q3_deleted
+        return q1_now
+
+    def __repr__(self):
+        return '(root node) ' + str(self.tree.root.meta.queue)
