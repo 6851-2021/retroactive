@@ -2,6 +2,11 @@
 
 This queue can be used independently, but it is intended to be
 nested within a fully retroactive priority queue.
+
+Based on:
+    Erik D. Demaine, John Iacono, and Stefan Langerman, "Retroactive Data
+    Structures", ACM Transactions on Algorithms, volume 3, number 2, May 2007,
+    Article 13. (URL: https://erikdemaine.org/papers/Retroactive_TALG/)
 """
 from typing import TypeVar, Generic, Union, Tuple, Optional, Generator
 from range_scapegoat import SumRangeTree

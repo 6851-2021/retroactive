@@ -1,4 +1,8 @@
-"""A dynamic range tree based on the scapegoat tree."""
+"""A dynamic range tree based on the scapegoat tree.
+
+Mostly based on the Open Data Structures version of scapegoat trees.
+See https://opendatastructures.org/newhtml/ods/latex/scapegoat.html.
+"""
 from typing import (TypeVar, Generic, Optional, List, Tuple, Generator,
                     Callable, Iterable, Any)
 from abc import ABC, abstractmethod
@@ -15,10 +19,6 @@ TreeType = 'RangeTree[K, V]'
 RebuildType = Callable[[NodeType], NodeType]
 NodeIterator = Generator[NodeType, None, None]
 KVMetaIterator = Generator[KVMeta, None, None]
-
-# partially based on
-# https://opendatastructures.org/newhtml/ods/latex/scapegoat.html
-# TODO: full citations
 
 
 class RangeMeta(ABC):

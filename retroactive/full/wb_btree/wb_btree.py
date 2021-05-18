@@ -1,15 +1,15 @@
 """Strongly weight-balanced B-trees.
 
 Based on:
-    [1] Lars Arge and Jeffrey Scott Vitter, Optimal external memory
-        interval management, SIAM Journal on Computing, 32 (2003),
-        pp. 1488–1508. (http://www.ittc.ku.edu/~jsv/Papers/
-        ArV03.interval_managementOfficial.pdf)
-    [2]  Bender, M.A., Demaine, E.D., Farach-Colton, M.: Cache-oblivious
-         b-trees. In: Proceedings of the 41st Annual Symposium on
-         Foundations of Computer Science, pp. 399–409. IEEE (2000).
-         (http://supertech.csail.mit.edu/papers/DemaineKaLiSi15.pdf)
-    (TODO: pick a citation style)
+    [1] Michael A. Bender, Erik D. Demaine, and Martin Farach-Colton,
+       "Cache-Oblivious B-Trees", SIAM Journal on Computing, volume 35,
+       number 2, 2005, pages 341–358.
+       (URL: https://erikdemaine.org/papers/CacheObliviousBTrees_SICOMP/)
+    [1] Lars Arge and Jeffrey Scott Vitter, "Optimal external memory
+        interval management", SIAM Journal on Computing, volume 32,
+        number 6, 2003, pages 1488–1508.
+        (URL: http://www.ittc.ku.edu/~jsv/Papers/
+              ArV03.interval_managementOfficial.pdf)
 """
 from typing import TypeVar, Generic, Optional, List, Tuple, Generator
 from collections import deque

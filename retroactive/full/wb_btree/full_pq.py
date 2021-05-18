@@ -1,4 +1,13 @@
-"""An (unoptimized) fully retroactive priority queue."""
+"""An (unoptimized) fully retroactive priority queue.
+
+Inspired by, but not distinctly not an implementation of:
+    Erik D. Demaine, Tim Kaler, Quanquan Liu, Aaron Sidford, and Adam Yedidia,
+    "Polylogarithmic Fully Retroactive Priority Queues via Hierarchical
+    Checkpointing", in Proceedings of the 14th International Symposium on
+    Algorithms and Data Structures (WADS 2015), Victoria, British Columbia,
+    Canada, August 5–7, 2015, pages 263–275.
+    (URL: https://erikdemaine.org/papers/FullyRetroactive_WADS2015/)
+"""
 from typing import TypeVar, Optional, List
 from collections import deque
 from range_scapegoat import RangeTree, RangeNode, RangeMeta, NodeType
