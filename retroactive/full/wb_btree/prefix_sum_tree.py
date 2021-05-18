@@ -5,6 +5,7 @@ from collections import deque
 K = TypeVar('K')
 V = TypeVar('V')
 
+
 def make_meta(zero: Any):
     """Generates a metadata class and rebuild function with a typed zero."""
     class PrefixSumMeta(RangeMeta):
@@ -30,12 +31,10 @@ def make_meta(zero: Any):
             if parent:
                 self.min_prefix_sum = min(
                     parent.left.meta.min_prefix_sum,
-                    parent.left.meta.sum + parent.right.meta.min_prefix_sum
-                )
+                    parent.left.meta.sum + parent.right.meta.min_prefix_sum)
                 parent.meta.max_prefix_sum = max(
                     parent.left.meta.max_prefix_sum,
-                    parent.left.meta.sum + parent.right.meta.max_prefix_sum
-                )
+                    parent.left.meta.sum + parent.right.meta.max_prefix_sum)
 
         def __repr__(self):
             rep = f'sum: {self.sum}'
@@ -63,12 +62,10 @@ def make_meta(zero: Any):
                 parent.meta.sum = left.meta.sum + right.meta.sum
                 parent.meta.min_prefix_sum = min(
                     left.meta.min_prefix_sum,
-                    left.meta.sum + right.meta.min_prefix_sum
-                )
+                    left.meta.sum + right.meta.min_prefix_sum)
                 parent.meta.max_prefix_sum = max(
                     left.meta.max_prefix_sum,
-                    left.meta.sum + right.meta.max_prefix_sum
-                )
+                    left.meta.sum + right.meta.max_prefix_sum)
                 next_level.append(parent)
             else:
                 next_level.append(left)
@@ -84,12 +81,13 @@ class PrefixSumTree(RangeTree[K, V]):
     """A tree that supports prefix sum queries."""
     def __init__(self, zero: Optional[V] = None):
         PrefixSumMeta, prefix_rebuild = make_meta(zero)
-        super().__init__(rebuild_fn=prefix_rebuild,
-                         meta_cls=PrefixSumMeta)
+        super().__init__(rebuild_fn=prefix_rebuild, meta_cls=PrefixSumMeta)
         self.zero = zero
 
     def min_max_prefix_sum_at(self, key: K) -> Optional[Tuple[V, V]]:
         """Finds the prefix sums at a node."""
+        if not self.root:
+            return None
         path = list(self.root.path(key))
         leaf = path[-1]
         if leaf.is_leaf and leaf.min == key:
@@ -99,12 +97,10 @@ class PrefixSumTree(RangeTree[K, V]):
             for (parent, child) in zip(path[:-1], path[1:]):
                 if child == parent.right:
                     # Right turn.
-                    min_sum = min(
-                        min_sum, path_sum + parent.left.meta.min_prefix_sum
-                    )
-                    max_sum = max(
-                        max_sum, path_sum + parent.left.meta.max_prefix_sum
-                    )
+                    min_sum = min(min_sum,
+                                  path_sum + parent.left.meta.min_prefix_sum)
+                    max_sum = max(max_sum,
+                                  path_sum + parent.left.meta.max_prefix_sum)
                     path_sum += parent.left.meta.sum
             min_sum = min(min_sum, path_sum + leaf.meta.min_prefix_sum)
             max_sum = max(max_sum, path_sum + leaf.meta.max_prefix_sum)
@@ -122,13 +118,21 @@ class PrefixSumTree(RangeTree[K, V]):
         if min_max:
             return min_max[1]
 
-    def last_node_with_sum(self, key_ub: K, prefix_sum: V) -> Optional[NodeType]:
+    def last_node_with_sum(self, key_ub: K,
+                           prefix_sum: V) -> Optional[NodeType]:
         """Finds the last node such that:
-            * The key is ≤ key_ub.
+            * The key is < key_ub.
             * The prefix sum at the tree is exactly `prefix_sum`.
 
         If such a node cannot be found, `None` is returned."""
+        if not self.root:
+            return None
         path = list(self.root.path_left_biased(key_ub))
+        if path[-1].min == key_ub:
+            pred = self.root.predecessor(key_ub)
+            if pred is None:
+                return None
+            path = list(self.root.path_left_biased(pred))
         path_sum = self.zero
         for parent, child in zip(path[:-1], path[1:]):
             if child == parent.right:
@@ -171,13 +175,21 @@ class PrefixSumTree(RangeTree[K, V]):
         if node and node.is_leaf:
             return node
 
-    def first_node_with_sum(self, key_lb: K, prefix_sum: V) -> Optional[NodeType]:
+    def first_node_with_sum(self, key_lb: K,
+                            prefix_sum: V) -> Optional[NodeType]:
         """Finds the last node such that:
-            * The key is ≥ key_lb.
+            * The key is > key_lb.
             * The prefix sum at the tree is exactly `prefix_sum`.
 
         If such a node cannot be found, `None` is returned."""
+        if not self.root:
+            return None
         path = list(self.root.path(key_lb))
+        if path[-1].min == key_lb:
+            succ = self.root.successor(key_lb)
+            if succ is None:
+                return None
+            path = list(self.root.path(succ))
         path_sum = self.zero
         for parent, child in zip(path[:-1], path[1:]):
             if child == parent.right:

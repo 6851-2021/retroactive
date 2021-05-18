@@ -62,12 +62,11 @@ def test_first_node_with_sum(seq_name):
     for idx, val in enumerate(seq):
         tree.insert(idx, val)
     for idx in range(len(seq)):
-        print(idx)
         first_node = tree.first_node_with_sum(idx, 0)
+        if zero_indices and idx >= zero_indices[0]:
+            zero_indices.popleft()
         if zero_indices:
             assert first_node.min == first_node.max == zero_indices[0]
-            if idx >= zero_indices[0]:
-                zero_indices.popleft()
         else:
             assert first_node is None
 
@@ -83,10 +82,9 @@ def test_last_node_with_sum(seq_name):
         tree.insert(idx, val)
     for idx in range(len(seq) - 1, -1, -1):
         last_node = tree.last_node_with_sum(idx, 0)
+        if zero_indices and idx <= zero_indices[-1]:
+            zero_indices.pop()
         if zero_indices:
             assert last_node.min == last_node.max == zero_indices[-1]
-            if idx <= zero_indices[-1]:
-                zero_indices.pop()
         else:
             assert last_node is None
-

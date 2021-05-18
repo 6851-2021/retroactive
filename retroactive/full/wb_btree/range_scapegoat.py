@@ -11,6 +11,7 @@ V = TypeVar('V')
 MetaType = Optional[Any]  # TODO: improve
 KVMeta = Tuple[K, V, MetaType]
 NodeType = 'RangeNode[K, V, Meta]'
+TreeType = 'RangeTree[K, V]'
 RebuildType = Callable[[NodeType], NodeType]
 NodeIterator = Generator[NodeType, None, None]
 KVMetaIterator = Generator[KVMeta, None, None]
@@ -22,15 +23,15 @@ KVMetaIterator = Generator[KVMeta, None, None]
 class RangeMeta(ABC):
     """Abstract base class for range metadata."""
     @abstractmethod
-    def __init__(self, key: K, val: V, container: NodeType):
+    def __init__(self, key: K, val: V, node: NodeType):
         """Initializes range metadata."""
 
     @abstractmethod
-    def insert(self, key: K, val: V, container: NodeType) -> None:
+    def insert(self, key: K, val: V, node: NodeType) -> None:
         """Updates range metadata to reflect an insert of a leaf."""
 
     @abstractmethod
-    def remove(self, key: K, val: V, container: NodeType) -> None:
+    def remove(self, key: K, val: V, node: NodeType) -> None:
         """Updates range metadata to reflect removal of a leaf."""
 
 
@@ -105,6 +106,16 @@ class RangeTree(Generic[K, V]):
         """Returns all key-value-meta tuples in order."""
         if self.root:
             yield from self.root.all()
+
+    def predecessor(self, key: K) -> Optional[K]:
+        """Finds the key immediately before `key`, if it exists."""
+        if self.root:
+            return self.root.predecessor(key)
+
+    def successor(self, key: K) -> Optional[K]:
+        """Finds the key immediately after `key`, if it exists."""
+        if self.root:
+            return self.root.successor(key)
 
     def in_range(self, lb: K, ub: K) -> KVMetaIterator:
         """Returns all key-value-meta tuples with keys in range [lb, ub]."""
@@ -208,13 +219,22 @@ class RangeNode(Generic[K, V]):
             return node.val
 
     def path(self, key: K) -> NodeIterator:
-        """Finds a path to a (possibly nonexistent) key."""
+        """Finds a (right-biased) path to a (possibly nonexistent) key."""
         yield self
         if not self.is_leaf:
             if self.left and self.left.max >= key:
                 yield from self.left.path(key)
             else:
                 yield from self.right.path(key)
+
+    def path_left_biased(self, key: K) -> NodeIterator:
+        """Finds a (left-biased) path to a (possibly nonexistent) key."""
+        yield self
+        if not self.is_leaf:
+            if self.right and self.right.min <= key:
+                yield from self.right.path_left_biased(key)
+            else:
+                yield from self.left.path_left_biased(key)
 
     def insert(self, key: K, val: V, rebuild_fn: RebuildType,
                alpha: float) -> Tuple[NodeType, int]:
@@ -241,6 +261,8 @@ class RangeNode(Generic[K, V]):
             leaf.max = key
             leaf.left = replacement_leaf
             leaf.right = new_leaf
+
+        # Update metadata.
         if meta_cls:
             new_leaf.meta = meta_cls(key, val, new_leaf)
         for node in reversed(path):
@@ -302,6 +324,8 @@ class RangeNode(Generic[K, V]):
             grandparent.left = sibling
         else:
             grandparent.right = sibling
+
+        # Update metadata, etc.
         for node in reversed(path[:-2]):
             node.size -= 1
             node.min = node.left.min
@@ -347,6 +371,32 @@ class RangeNode(Generic[K, V]):
             yield from self.left.all()
             yield from self.right.all()
 
+    def predecessor(self, key: K) -> Optional[K]:
+        """Finds the key immediately before `key`, if it exists."""
+        path = list(self.path(key))
+        leaf = path[-1]
+        if not leaf.is_leaf:
+            raise ValueError(f'Cannot find predecessor of missing key {key}.')
+        for parent, child in zip(reversed(path[:-1]), reversed(path[1:])):
+            if child == parent.right:
+                curr = parent.left
+                while not curr.is_leaf:
+                    curr = curr.right
+                return curr.min
+
+    def successor(self, key: K) -> Optional[K]:
+        """Finds the key immediately after `key`, if it exists."""
+        path = list(self.path(key))
+        leaf = path[-1]
+        if not leaf.is_leaf:
+            raise ValueError(f'Cannot find successor of missing key {key}.')
+        for parent, child in zip(reversed(path[:-1]), reversed(path[1:])):
+            if child == parent.left:
+                curr = parent.right
+                while not curr.is_leaf:
+                    curr = curr.left
+                return curr.min
+
     def nodes_in_range(self, lb: K, ub: K) -> NodeIterator:
         """Generates a minimal set of nodes (expected size O(log n)) covering
         the range [lb, ub]."""
@@ -382,14 +432,14 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
     (i.e. commutative, etc.) aggregation (e.g. +, *)."""
     class AggMeta(RangeMeta):
         """Metadata class for an aggregation."""
-        def __init__(self, key: K, val: V, container: NodeType):
-            super().__init__(key, val, container)
+        def __init__(self, key: K, val: V, *args, **kwargs):
+            super().__init__(key, val, *args, **kwargs)
             self.val = val
 
-        def insert(self, key: K, val: V, container: NodeType) -> None:
+        def insert(self, key: K, val: V, *args, **kwargs) -> None:
             self.val = insert_fn(self.val, val)
 
-        def remove(self, key: K, val: V, container: NodeType) -> None:
+        def remove(self, key: K, val: V, *args, **kwargs) -> None:
             self.val = remove_fn(self.val, val)
 
         def __repr__(self):
@@ -409,9 +459,8 @@ def make_agg_meta(insert_fn: AggType, remove_fn: AggType):
                 parent.max = right.max
                 parent.ub = parent.left.ub + parent.right.ub
                 parent.size = parent.left.size + parent.right.size
-                # The key and container parameters aren't actually used here.
-                parent.meta = AggMeta(left.min, left.meta.val, left)
-                parent.meta.insert(right.max, right.meta.val, right)
+                parent.meta = AggMeta(left.min, left.meta.val)
+                parent.meta.insert(right.max, right.meta.val)
                 next_level.append(parent)
             else:
                 next_level.append(left)

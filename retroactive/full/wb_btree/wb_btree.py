@@ -65,6 +65,14 @@ class WBBTree(Generic[K, V]):
         """Returns all key-value pairs in order."""
         return self.root.all()
 
+    def min(self) -> Optional[KV]:
+        """Finds the minimum key-value pair in the tree."""
+        return self.root.min()
+
+    def max(self) -> Optional[KV]:
+        """Finds the maximum key-value pair in the tree."""
+        return self.root.max()
+
     @property
     def size(self) -> int:
         """The number of key-value pairs in the tree."""
@@ -83,6 +91,13 @@ class WBBTree(Generic[K, V]):
         the weight of its children."""
         return all(node.weight == len(node.keys) + sum(c.weight
                                                        for c in node.children)
+                   for node in self.root.all_nodes())
+
+    def _size_invariant(self) -> bool:
+        """Invariant: a node's size == the number of non-deleted keys it
+        contains + the sizes of its children."""
+        return all(node.size == len(node.keys) - len(node.deleted) +
+                   sum(c.size for c in node.children)
                    for node in self.root.all_nodes())
 
     def _kv_invariant(self) -> bool:
@@ -143,6 +158,7 @@ class WBBTree(Generic[K, V]):
         assert self._depth_invariant(), 'Leaves have unequal depths.'
         assert self._root_invariant(), 'Root has the wrong number of children.'
         assert self._weight_invariant(), '≥1 node has the wrong weight.'
+        assert self._size_invariant(), '≥1 node has the wrong size.'
         assert self._num_children_invariant(), \
                'At ≥1 node, # of children ≠ # of keys + 1.'
         assert self._kv_invariant(), \
@@ -161,7 +177,8 @@ class WBBNode(Generic[K, V]):
     """A node in a weight-balanced B-tree."""
     def __init__(self, d: int = 8):
         """Creates a weight-balanced B-tree node with balance factor `d`."""
-        self.weight = 0
+        self.weight = 0  # number of slots used
+        self.size = 0    # number of currently inserted elements
         self.d = d
         self.deleted: List[K] = []
         self.keys: List[K] = []
@@ -225,12 +242,16 @@ class WBBNode(Generic[K, V]):
         left.children = self.children[:idx + 1]
         left.deleted = [k for k in self.deleted if k < median_key]
         left.weight = sum(c.weight for c in left.children) + len(left.keys)
+        left.size = sum(c.size for c in left.children) + len(left.keys)
+        left.size -= len(left.deleted)
         right: WBBNode[K, V] = WBBNode(d=self.d)
         right.children = self.children[idx + 1:]
         right.keys = self.keys[idx + 1:]
         right.vals = self.vals[idx + 1:]
         right.deleted = [k for k in self.deleted if k > median_key]
         right.weight = sum(c.weight for c in right.children) + len(right.keys)
+        right.size = sum(c.size for c in right.children) + len(right.keys)
+        right.size -= len(right.deleted)
         return left, (median_key, median_val), right
 
     def insert(self, key: K, val: V) -> 'WBBNode[K, V]':
@@ -265,6 +286,7 @@ class WBBNode(Generic[K, V]):
             leaf.vals.append(val)
         for node in path:
             node.weight += 1
+            node.size += 1
 
         # Move back up the tree, splitting as necessary.
         for level, child in enumerate(reversed(path)):
@@ -277,6 +299,7 @@ class WBBNode(Generic[K, V]):
                     new_root.insert(median[0], median[1])
                     new_root.children = [left, right]
                     new_root.weight = left.weight + right.weight + 1
+                    new_root.size = left.size + right.size + 1
                     return new_root
                 # Otherwise, replace the child node with the new left node and
                 # insert the right node next to it.
@@ -298,6 +321,8 @@ class WBBNode(Generic[K, V]):
         if key not in path[-1].keys or key in path[-1].deleted:
             raise ValueError(f'Cannot delete "{key}" (not in tree)')
         path[-1].deleted.append(key)
+        for node in path:
+            node.size -= 1
 
     def leaves(self) -> Generator[Tuple[int, 'WBBNode[K, V]'], None, None]:
         """Finds all the leaves in the subtree rooted at the node."""
@@ -334,6 +359,26 @@ class WBBNode(Generic[K, V]):
                 if key not in self.deleted:
                     yield (key, val)
             yield from self.children[-1].all()
+
+    def min(self) -> Tuple[K, V]:
+        """Returns the minimum key-value pair in the subtree."""
+        if self.is_leaf:
+            for (k, v) in zip(self.keys, self.vals):
+                if k not in self.deleted:
+                    return (k, v)
+        for child in self.children:
+            if child.size > 0:
+                return child.min()
+
+    def max(self) -> Tuple[K, V]:
+        """Returns the maximum key-value pair in the subtree."""
+        if self.is_leaf:
+            for (k, v) in zip(reversed(self.keys), reversed(self.vals)):
+                if k not in self.deleted:
+                    return (k, v)
+        for child in reversed(self.children):
+            if child.size > 0:
+                return child.max()
 
     def __repr__(self):
         if self.is_leaf:

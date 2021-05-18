@@ -13,7 +13,7 @@ V = TypeVar('V')
 
 def _cmp_or_none(cmp: Callable, a: Optional[Any], b: Optional[Any]) -> Optional[Any]:
     if a is not None and b is not None:
-        return cmp(a, b)
+        return cmp(a, b, key=lambda kv: kv[0])
     elif a is not None:
         return a
     elif b is not None:
@@ -43,14 +43,14 @@ class InsertMeta(RangeMeta):
         """Marks a value present (message from associated queue)."""
         if node.is_leaf and node.val == val:
             self.max_absent = None
-            self.min_present = val
+            self.min_present = (val, node.min)
         else:
             self._propagate(node)
 
     def mark_absent(self, val: V, node: NodeType) -> None:
         """Marks a value absent (message from associated queue)."""
         if node.is_leaf and node.val == val:
-            self.max_absent = val
+            self.max_absent = (val, node.min)
             self.min_present = None
         else:
             self._propagate(node)
@@ -118,22 +118,28 @@ class InsertTree(RangeTree[TS, V]):
             for node in reversed(path):
                 node.meta.mark_absent(path[-1].val, node)
 
-    def max_absent_in_range(self, lb: TS, ub: TS) -> Optional[V]:
-        try:
-            return max(
+    def max_absent_in_range(self, lb: TS, ub: TS) -> Tuple[Optional[V], Optional[TS]]:
+        if not self.root:
+            return None, None
+        return max(
+            (
                 node.meta.max_absent
                 for node in self.root.nodes_in_range(lb, ub)
                 if node.meta.max_absent is not None
-            )
-        except ValueError:
-            return None
+            ),
+            key=lambda kv: kv[0],
+            default=(None, None)
+        )
 
-    def min_present_in_range(self, lb: TS, ub: TS) -> Optional[V]:
-        try:
-            return min(
+    def min_present_in_range(self, lb: TS, ub: TS) -> Tuple[Optional[V], Optional[TS]]:
+        if not self.root:
+            return None, None
+        return min(
+            (
                 node.meta.min_present
                 for node in self.root.nodes_in_range(lb, ub)
                 if node.meta.min_present is not None
-            )
-        except ValueError:
-            return None
+            ),
+            key=lambda kv: kv[0],
+            default=(None, None)
+        )
